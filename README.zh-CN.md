@@ -106,6 +106,8 @@ vibeplay run --headless --frames 300 --input s.txt   # 印出每一个音调
 
 游戏是 [QingOS](https://qingos.korekore.ai/zh/) 上的一个整屏 app。写 app 的库（qapp）和放整屏 app 的库（qfull）在 [qingos-sdk](https://github.com/second-state/qingos-sdk) 里，这里用 git 依赖。
 
+`Cargo.lock` 把 qingos-sdk 钉在一个提交上。qingos-sdk 换了 wasmtime 的版本，这里也要 `cargo update -p qfull -p qapp`。掌机只认同一个 wasmtime 主版本编的 `.cwasm`；认不了就从 `.wasm` 重编一次。
+
 ## 开源协议
 
 MIT。自带的点阵字是缝合像素字体（OFL-1.1），全文在 `vibeplay/fonts/fusion-pixel-font/`。

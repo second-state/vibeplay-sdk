@@ -109,6 +109,8 @@ A Market package has no `.cwasm`: the handheld builds it from the `.wasm`.
 
 Each game is a full-screen app on [QingOS](https://qingos.korekore.ai/). The library for apps (qapp) and the library that runs full-screen apps (qfull) are in [qingos-sdk](https://github.com/second-state/qingos-sdk). This repository uses them as git dependencies.
 
+`Cargo.lock` pins qingos-sdk to one commit. When qingos-sdk changes the wasmtime version, run `cargo update -p qfull -p qapp` here too. The handheld uses a `.cwasm` only if the same wasmtime major version built it. If not, the handheld builds the game again from the `.wasm`.
+
 ## License
 
 MIT. The built-in pixel font is Fusion Pixel Font (OFL-1.1). The full text is in `vibeplay/fonts/fusion-pixel-font/`.
