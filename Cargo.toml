@@ -4,7 +4,7 @@ resolver = "2"
 members = ["vibeplay", "cli", "examples/*", "templates/blank"]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 publish = false
 license = "MIT"
