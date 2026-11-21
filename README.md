@@ -6,6 +6,8 @@ Make pixel games and small apps for the VibePlay handheld: 240×160, 256 colors,
 You write games in Rust and build them to wasm. Write them yourself, or let an agent write them. Claude Code and Codex work, and so do other agents.
 
 You need Rust. If you do not have it, install it from [rustup.rs](https://rustup.rs) first.
+Run these commands in your own terminal, before you open the agent. Do not ask the agent to run `vibeplay skill install`: it writes to `~/.claude/skills`, and Claude Code does not let an agent change its own configuration, so it stops the command.
+The command line uses the system language: Chinese on a Chinese system, English on all others. Set `VIBEPLAY_LANG=zh` or `VIBEPLAY_LANG=en` to choose.
 
 ```sh
 cargo install --git https://github.com/second-state/vibeplay-sdk vibeplay-cli

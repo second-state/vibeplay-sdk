@@ -6,6 +6,8 @@
 用 Rust 写，编成 wasm。你自己写，或者让 agent 写：Claude Code、Codex 都行，别的 agent 也行。
 
 要先有 Rust。没有就先到 [rustup.rs](https://rustup.rs) 装。
+下面这几条在你自己的终端里跑，在打开 agent 之前。别让 agent 跑 `vibeplay skill install`：它要往 `~/.claude/skills` 里写，Claude Code 不让 agent 改它自己的配置，会拦下。
+命令行的字跟着系统语言：系统是中文说中文，别的说英文。设 `VIBEPLAY_LANG=zh` 或 `en` 可以指定。
 
 ```sh
 cargo install --git https://github.com/second-state/vibeplay-sdk vibeplay-cli

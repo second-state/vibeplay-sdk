@@ -1,5 +1,6 @@
 //! 一个游戏的目录：读清单、查清单、用 cargo 编成 wasm。
 
+use crate::pick;
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -61,38 +62,38 @@ impl Game {
     /// 读一个游戏的目录。清单不对就说哪里不对：掌机装的时候也会这样查。
     pub fn open(dir: &Path) -> Result<Game> {
         let path = dir.join("app.toml");
-        let text = std::fs::read_to_string(&path).with_context(|| format!("{} 下没有 app.toml：这不是一个游戏的目录", dir.display()))?;
-        let m: Manifest = toml::from_str(&text).with_context(|| format!("{} 写错了", path.display()))?;
+        let text = std::fs::read_to_string(&path).with_context(|| pick(format!("{} 下没有 app.toml：这不是一个游戏的目录", dir.display()), format!("{} has no app.toml. It is not a game directory.", dir.display())))?;
+        let m: Manifest = toml::from_str(&text).with_context(|| pick(format!("{} 写错了", path.display()), format!("{} has errors", path.display())))?;
         let a = m.app;
         let mut bad = Vec::new();
         if a.name.is_empty() || !a.name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') || !a.name.starts_with(|c: char| c.is_ascii_lowercase()) {
-            bad.push(format!("name = \"{}\"：要英文小写开头，只用小写字母、数字、-", a.name));
+            bad.push(pick(format!("name = \"{}\"：要英文小写开头，只用小写字母、数字、-", a.name), format!("name = \"{}\": start with a lowercase letter. Use only lowercase letters, digits and -.", a.name)));
         }
         if a.screen != "full" {
-            bad.push("要写 screen = \"full\"（整屏页）".into());
+            bad.push(pick("要写 screen = \"full\"（整屏页）", "Write screen = \"full\" (full-screen page).").into());
         }
         if !a.frame.is_empty() && a.frame != "640x480" {
-            bad.push(format!("frame = \"{}\"：不写是 240×160，要真彩写 \"640x480\"", a.frame));
+            bad.push(pick(format!("frame = \"{}\"：不写是 240×160，要真彩写 \"640x480\"", a.frame), format!("frame = \"{}\": if you do not write it, it is 240×160. For true color, write \"640x480\".", a.frame)));
         }
         if a.rate_hz != 60 {
-            bad.push(format!("rate_hz 是 {}，要 60", a.rate_hz));
+            bad.push(pick(format!("rate_hz 是 {}，要 60", a.rate_hz), format!("rate_hz is {}. It must be 60.", a.rate_hz)));
         }
         if !a.command.ends_with(".cwasm") || !a.command.starts_with("bin/") {
-            bad.push(format!("command = \"{}\"：要 bin/<名字>.cwasm", a.command));
+            bad.push(pick(format!("command = \"{}\"：要 bin/<名字>.cwasm", a.command), format!("command = \"{}\": it must be bin/<name>.cwasm", a.command)));
         }
         if !a.kind.is_empty() && a.kind != "game" && a.kind != "app" {
-            bad.push(format!("kind = \"{}\"：游戏写 game（不写也是），应用写 app", a.kind));
+            bad.push(pick(format!("kind = \"{}\"：游戏写 game（不写也是），应用写 app", a.kind), format!("kind = \"{}\": write game for a game (this is the default), or app for an app", a.kind)));
         }
         if !a.cover.is_empty() {
             let c = dir.join(&a.cover);
             if !a.cover.starts_with("assets/") || !a.cover.ends_with(".png") {
-                bad.push(format!("cover = \"{}\"：要 assets/ 下的一张 .png", a.cover));
+                bad.push(pick(format!("cover = \"{}\"：要 assets/ 下的一张 .png", a.cover), format!("cover = \"{}\": it must be a .png file in assets/", a.cover)));
             } else if !c.is_file() {
-                bad.push(format!("cover：没有 {}", c.display()));
+                bad.push(pick(format!("cover：没有 {}", c.display()), format!("cover: {} does not exist", c.display())));
             }
         }
         if !bad.is_empty() {
-            bail!("{} 有几处不对：\n  - {}", path.display(), bad.join("\n  - "));
+            bail!(pick(format!("{} 有几处不对：\n  - {}", path.display(), bad.join("\n  - ")), format!("{} has errors:\n  - {}", path.display(), bad.join("\n  - "))));
         }
         Ok(Game { dir: dir.to_path_buf(), m: a })
     }
@@ -102,7 +103,7 @@ impl Game {
         if !self.dir.join("Cargo.toml").is_file() {
             // 没有源码：用 bin/ 下编好的。
             let wasm = self.dir.join(&self.m.command).with_extension("wasm");
-            return if wasm.is_file() { Ok(wasm) } else { bail!("{} 下没有 Cargo.toml，也没有编好的 {}", self.dir.display(), wasm.display()) };
+            return if wasm.is_file() { Ok(wasm) } else { bail!(pick(format!("{} 下没有 Cargo.toml，也没有编好的 {}", self.dir.display(), wasm.display()), format!("{} has no Cargo.toml and no built {}", self.dir.display(), wasm.display()))) };
         }
         build(&self.dir)
     }
@@ -115,9 +116,9 @@ pub fn build(dir: &Path) -> Result<PathBuf> {
         .arg(dir.join("Cargo.toml"))
         .stderr(std::process::Stdio::inherit())
         .output()
-        .context("起不来 cargo（vibeplay doctor 看看装好没有）")?;
+        .context(pick("起不来 cargo（vibeplay doctor 看看装好没有）", "Cannot start cargo. Run vibeplay doctor to check the installation."))?;
     if !out.status.success() {
-        bail!("{} 编不过（错在上面）。缺 wasm32 目标就跑 vibeplay doctor", dir.display());
+        bail!(pick(format!("{} 编不过（错在上面）。缺 wasm32 目标就跑 vibeplay doctor", dir.display()), format!("Cannot build {} (the errors are above). If the wasm32 target is missing, run vibeplay doctor.", dir.display())));
     }
     let manifest = std::fs::canonicalize(dir.join("Cargo.toml"))?;
     let mut found = None;
@@ -133,7 +134,7 @@ pub fn build(dir: &Path) -> Result<PathBuf> {
             }
         }
     }
-    found.with_context(|| format!("{} 编完了，没找到 .wasm（Cargo.toml 要有 crate-type = [\"cdylib\", \"rlib\"]）", dir.display()))
+    found.with_context(|| pick(format!("{} 编完了，没找到 .wasm（Cargo.toml 要有 crate-type = [\"cdylib\", \"rlib\"]）", dir.display()), format!("{} is built, but there is no .wasm file (Cargo.toml must have crate-type = [\"cdylib\", \"rlib\"])", dir.display())))
 }
 
 /// 命令行给的是一个目录还是一个 .wasm、.cwasm 文件：回要跑的模块、名字、内存上限。
