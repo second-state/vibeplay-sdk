@@ -2,6 +2,7 @@
 //! 宿主在 web/player.js：画面、按键、合成器、存档照着掌机做。
 
 use crate::game::Game;
+use crate::pick;
 use anyhow::Result;
 use std::path::Path;
 
@@ -30,7 +31,7 @@ fn escape(s: &str) -> String {
 pub fn page(dir: &Path) -> Result<String> {
     let g = Game::open(dir)?;
     if !g.m.frame.is_empty() {
-        anyhow::bail!("网页版还只认 240×160 的游戏：{} 写了 frame = \"{}\"", g.m.name, g.m.frame);
+        anyhow::bail!(pick(format!("网页版还只认 240×160 的游戏：{} 写了 frame = \"{}\"", g.m.name, g.m.frame), format!("The web version accepts only 240×160 games for now. {} has frame = \"{}\"", g.m.name, g.m.frame)));
     }
     let wasm = std::fs::read(g.build()?)?;
     let mut assets = serde_json::Map::new();

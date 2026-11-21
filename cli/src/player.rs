@@ -1,6 +1,7 @@
 //! 跑一个游戏：一帧交按键、调一次 `qing_tick`、取画面和音调。窗口和不开窗口都用它。
 //! 装载器和画面、声音的代码是 qfull 的，掌机上用的是同一份。
 
+use crate::pick;
 use crate::script::Script;
 use anyhow::{Context, Result};
 use qfull::full::{Frame, Full, Tone};
@@ -37,7 +38,7 @@ impl Player {
 
     /// 走一帧：交这一帧的按键，调 `qing_tick`，取画面。返回这一帧发的音调。游戏出错（panic、死循环）回错。
     pub fn step(&mut self, buttons: u32) -> Result<Vec<Tone>> {
-        self.inner.tick(buttons).with_context(|| format!("第 {} 帧", self.frame_no))?;
+        self.inner.tick(buttons).with_context(|| pick(format!("第 {} 帧", self.frame_no), format!("Frame {}", self.frame_no)))?;
         let full = self.inner.full();
         if let Some(f) = full.take_frame() {
             self.last = f;
@@ -66,9 +67,9 @@ impl Player {
         let (w, h) = self.last.size();
         let (x0, y0, cw, ch) = crop.unwrap_or((0, 0, w, h));
         if cw == 0 || ch == 0 || x0 + cw > w || y0 + ch > h {
-            anyhow::bail!("--crop 出了画面：画面是 {w}×{h}");
+            anyhow::bail!(pick(format!("--crop 出了画面：画面是 {w}×{h}"), format!("--crop is outside the screen. The screen is {w}×{h}.")));
         }
-        let file = std::fs::File::create(out).with_context(|| format!("写不了 {}", out.display()))?;
+        let file = std::fs::File::create(out).with_context(|| pick(format!("写不了 {}", out.display()), format!("Cannot write {}", out.display())))?;
         let full = self.last.rgb_scaled(1);
         let mut rgb = Vec::with_capacity(cw * ch * 3 * k * k);
         for y in 0..ch * k {

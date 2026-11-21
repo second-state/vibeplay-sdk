@@ -70,7 +70,7 @@ vibeplay pair 192.168.1.23 && vibeplay push # 推到掌机上直接开（掌机�
 `--data 目录` 给存档一个地方：`run` 开窗口时默认是游戏目录下的 `save/`。
 `--headless` 和 `shot` 不给 `--data` 就存不了（`vibeplay::save` 回 false）。要截「标题上有最高分」这种图，给它一个目录。
 `save("best", 字节)` 就是目录里一个叫 `best` 的文件，内容原样。跑的时候会改写这个目录：要每次从同一份存档开始，先拷一份新的再跑。
-无头跑时 `tone_wav` 印成「帧 N 录音 毫秒=…」，别的印成「帧 N 音调 声道=… 频率=…」。
+无头跑时 `tone_wav` 印成「帧 N 录音 毫秒=…」，别的印成「帧 N 音调 声道=… 频率=…」。系统不是中文时命令行说英文，印成 `frame N recording ms=…` 和 `frame N tone channel=… hz=…`。
 
 规则用单元测试验：`cargo test`。测试里直接造 `Game::default()`，`keys.set(位)`，再调 `step()`，看状态。
 - **每帧都 `set` 一次**：按住就每帧 set 同一个位。同一个键要按两下，中间要有一帧 `set(0)`，不然 `pressed` 认不出第二下。

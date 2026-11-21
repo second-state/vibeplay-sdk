@@ -11,6 +11,7 @@
 //! 发到集市的包不带 `.cwasm`：掌机从 `.wasm` 自己编，不用别人编的本机码（QingOS 的 ADR 0039）。
 
 use crate::game::Game;
+use crate::pick;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
@@ -36,7 +37,7 @@ pub fn pack(dir: &Path, target: Option<&str>) -> Result<(Vec<u8>, Game)> {
     let cmd = g.m.command.clone();
     add(&mut tar, &cmd.replace(".cwasm", ".wasm"), &wasm)?;
     if let Some(target) = target {
-        let cwasm = qfull::precompile(&wasm, Some(target)).with_context(|| format!("给 {target} 编不了"))?;
+        let cwasm = qfull::precompile(&wasm, Some(target)).with_context(|| pick(format!("给 {target} 编不了"), format!("Cannot compile for {target}")))?;
         add(&mut tar, &cmd, &cwasm)?;
     }
     for f in files(&dir.join("assets"))? {

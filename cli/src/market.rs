@@ -13,7 +13,7 @@
 
 use crate::game::Game;
 use crate::player::Player;
-use crate::{pack, script, source};
+use crate::{pack, pick, script, source};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -45,7 +45,7 @@ struct Saved {
 }
 
 fn file() -> Result<PathBuf> {
-    Ok(crate::device::config_dir().context("找不到 HOME")?.join("market.json"))
+    Ok(crate::device::config_dir().context(pick("找不到 HOME", "Cannot find HOME."))?.join("market.json"))
 }
 
 fn saved() -> Option<Saved> {
@@ -76,35 +76,37 @@ fn agent() -> ureq::Agent {
 
 /// 回的 JSON；不是 2xx 时拿服务端说的原因报错。
 fn reply(r: Result<ureq::http::Response<ureq::Body>, ureq::Error>, market: &str) -> Result<Value> {
-    let mut r = r.with_context(|| format!("连不上集市 {market}"))?;
+    let mut r = r.with_context(|| pick(format!("连不上集市 {market}"), format!("Cannot connect to the market {market}.")))?;
     let status = r.status().as_u16();
     let v: Value = r.body_mut().read_json().unwrap_or(Value::Null);
     match status {
         200..=299 => Ok(v),
-        401 => bail!("集市不认这个登录：vibeplay login 再登一次"),
-        _ => bail!("集市回 {status}：{}", v["error"].as_str().unwrap_or("没说原因")),
+        401 => bail!("{}", pick("集市不认这个登录：vibeplay login 再登一次", "The market does not accept this login. Run vibeplay login again.")),
+        _ => bail!("{}", pick(format!("集市回 {status}：{}", v["error"].as_str().unwrap_or("没说原因")), format!("The market replied {status}: {}", v["error"].as_str().unwrap_or("no reason given")))),
     }
 }
 
 fn token(market: &str) -> Result<String> {
     match saved() {
         Some(s) if s.market == market && !s.token.is_empty() => Ok(s.token),
-        Some(s) if !s.token.is_empty() => bail!("登录的是 {}，不是 {market}：vibeplay login --market {market}", s.market),
-        _ => bail!("还没登录：先 vibeplay login（要人在浏览器里点）"),
+        Some(s) if !s.token.is_empty() => bail!("{}", pick(format!("登录的是 {}，不是 {market}：vibeplay login --market {market}", s.market), format!("You are logged in to {}, not to {market}. Run vibeplay login --market {market}.", s.market))),
+        _ => bail!("{}", pick("还没登录：先 vibeplay login（要人在浏览器里点）", "You are not logged in. Run vibeplay login first. A person must click in the browser.")),
     }
 }
 
 pub fn login(market: &str) -> Result<()> {
     let a = agent();
-    let start = reply(a.post(format!("{market}/v1/login/start")).send_json(json!({})), market)?;
-    let code = start["device_code"].as_str().context("集市没给 device_code")?;
+    let start = reply(a.post(format!("{market}/v1/login/start")).header("accept-language", crate::lang()).send_json(json!({})), market)?;
+    let code = start["device_code"].as_str().context(pick("集市没给 device_code", "The market did not send a device_code."))?;
     let mut every = start["interval"].as_u64().unwrap_or(5);
-    println!("在浏览器里打开 {}", start["verification_uri"].as_str().unwrap_or("https://github.com/login/device"));
-    println!("输这个码：{}", start["user_code"].as_str().unwrap_or("?"));
-    println!("等你在浏览器里点完……");
+    let uri = start["verification_uri"].as_str().unwrap_or("https://github.com/login/device");
+    let user_code = start["user_code"].as_str().unwrap_or("?");
+    println!("{}", pick(format!("在浏览器里打开 {uri}"), format!("Open {uri} in the browser.")));
+    println!("{}", pick(format!("输这个码：{user_code}"), format!("Type this code: {user_code}")));
+    println!("{}", pick("等你在浏览器里点完……", "Waiting for you to finish in the browser..."));
     loop {
         std::thread::sleep(Duration::from_secs(every));
-        let r = reply(a.post(format!("{market}/v1/login/poll")).send_json(json!({ "device_code": code })), market)?;
+        let r = reply(a.post(format!("{market}/v1/login/poll")).header("accept-language", crate::lang()).send_json(json!({ "device_code": code })), market)?;
         if let Some(t) = r["token"].as_str() {
             let who = r["login"].as_str().unwrap_or("").to_string();
             // 同一个账号再登录：同意过的、答应公开过的照旧。
@@ -112,15 +114,16 @@ pub fn login(market: &str) -> Result<()> {
             let agreed = same.as_ref().is_some_and(|s| s.agreed);
             let public = same.map(|s| s.public).unwrap_or_default();
             save(&Saved { market: market.into(), token: t.into(), login: who.clone(), agreed, public })?;
-            println!("登录好了：{who}。令牌存在 {}", file()?.display());
+            let f = file()?;
+            println!("{}", pick(format!("登录好了：{who}。令牌存在 {}", f.display()), format!("You are logged in as {who}. The token is in {}.", f.display())));
             return Ok(());
         }
         match r["pending"].as_str() {
             Some("authorization_pending") => {}
             Some("slow_down") => every += 5,
-            Some("expired_token") => bail!("码过期了：再 vibeplay login"),
-            Some("access_denied") => bail!("在浏览器里点了取消"),
-            other => bail!("登录没成：{}", other.unwrap_or("集市没说原因")),
+            Some("expired_token") => bail!("{}", pick("码过期了：再 vibeplay login", "The code expired. Run vibeplay login again.")),
+            Some("access_denied") => bail!("{}", pick("在浏览器里点了取消", "You clicked cancel in the browser.")),
+            other => bail!("{}", pick(format!("登录没成：{}", other.unwrap_or("集市没说原因")), format!("Login failed: {}", other.unwrap_or("the market gave no reason")))),
         }
     }
 }
@@ -129,7 +132,7 @@ pub fn login(market: &str) -> Result<()> {
 fn check_manifest(g: &Game) -> Result<()> {
     let text = std::fs::read_to_string(g.dir.join("app.toml"))?;
     let v: toml::Value = toml::from_str(&text)?;
-    let app = v.get("app").and_then(|a| a.as_table()).context("app.toml 里没有 [app]")?;
+    let app = v.get("app").and_then(|a| a.as_table()).context(pick("app.toml 里没有 [app]", "app.toml has no [app] section."))?;
     let s = |k: &str| app.get(k).and_then(|x| x.as_str()).unwrap_or("").trim().to_string();
     let b = |k: &str| app.get(k).and_then(|x| x.as_bool()).unwrap_or(false);
     let has = |k: &str| app.iter().any(|(key, x)| (key == k || key.strip_prefix(k).is_some_and(|r| r.len() == 3 && r.starts_with('_'))) && x.as_str().is_some_and(|s| !s.trim().is_empty()));
@@ -137,37 +140,37 @@ fn check_manifest(g: &Game) -> Result<()> {
     let version = s("version");
     let parts: Vec<_> = version.split('.').collect();
     if parts.len() != 3 || parts.iter().any(|p| p.is_empty() || !p.bytes().all(|c| c.is_ascii_digit())) {
-        bad.push(format!("version = \"{version}\"：要写成 x.y.z，每发一次往上加"));
+        bad.push(pick(format!("version = \"{version}\"：要写成 x.y.z，每发一次往上加"), format!("version = \"{version}\": write it as x.y.z. Increase it each time you publish.")));
     }
     if RESERVED.contains(&g.m.name.as_str()) {
-        bad.push(format!("name = \"{}\"：是系统的名字，换一个", g.m.name));
+        bad.push(pick(format!("name = \"{}\"：是系统的名字，换一个", g.m.name), format!("name = \"{}\": the system uses this name. Use a different name.", g.m.name)));
     }
     if !has("title") {
-        bad.push("要有 title（可以再加 title_zh）".into());
+        bad.push(pick("要有 title（可以再加 title_zh）", "Add a title. You can also add title_zh.").into());
     }
     if !has("description") {
-        bad.push("要有 description：集市上的一两句介绍（可以再加 description_zh）".into());
+        bad.push(pick("要有 description：集市上的一两句介绍（可以再加 description_zh）", "Add a description: one or two sentences for the market. You can also add description_zh.").into());
     }
     if g.m.cover.is_empty() {
-        bad.push("要有 cover：assets/ 下的一张 PNG".into());
+        bad.push(pick("要有 cover：assets/ 下的一张 PNG", "Add a cover: a PNG file in assets/.").into());
     }
     if let Some(langs) = app.get("langs") {
         let ok = langs.as_array().is_some_and(|l| !l.is_empty() && l.iter().all(|x| matches!(x.as_str(), Some("en" | "zh"))));
         if !ok {
-            bad.push("langs 只能写 en、zh（游戏暂时不支持别的语言）".into());
+            bad.push(pick("langs 只能写 en、zh（游戏暂时不支持别的语言）", "langs can only contain en and zh. Games do not support other languages yet.").into());
         }
     }
     if b("mcu") {
-        bad.push("要 mcu 的 app 集市不收".into());
+        bad.push(pick("要 mcu 的 app 集市不收", "The market does not accept apps that need mcu.").into());
     }
     if v.get("agent").is_some() {
-        bad.push("带人格（[[agent]]）的 app 集市不收".into());
+        bad.push(pick("带人格（[[agent]]）的 app 集市不收", "The market does not accept apps with a persona ([[agent]]).").into());
     }
     if b("network") && app.get("hosts").and_then(|h| h.as_array()).is_none_or(|h| h.is_empty()) {
-        bad.push("要网（network = true）就要写 hosts：要连的地址".into());
+        bad.push(pick("要网（network = true）就要写 hosts：要连的地址", "If the app uses the network (network = true), add hosts: the addresses it connects to.").into());
     }
     if !bad.is_empty() {
-        bail!("发到集市前，app.toml 还要改几处：\n  - {}", bad.join("\n  - "));
+        bail!("{}", pick(format!("发到集市前，app.toml 还要改几处：\n  - {}", bad.join("\n  - ")), format!("Before you publish to the market, fix these items in app.toml:\n  - {}", bad.join("\n  - "))));
     }
     Ok(())
 }
@@ -182,12 +185,12 @@ fn trial(g: &Game, wasm: &Path) -> Result<Vec<Vec<u8>>> {
     let none = script::Script::default();
     let mut shots = Vec::new();
     for at in SHOTS {
-        p.run(at - p.frame_no, &none, |_, _| {}).context("不开窗口跑的时候出错了：先修好再发")?;
+        p.run(at - p.frame_no, &none, |_, _| {}).context(pick("不开窗口跑的时候出错了：先修好再发", "The game failed during the headless run. Fix it before you publish."))?;
         let f = dir.join(format!("{at}.png"));
         p.shot(&f, scale, None)?;
         shots.push(std::fs::read(&f)?);
     }
-    p.run(FRAMES - p.frame_no, &none, |_, _| {}).context("不开窗口跑的时候出错了：先修好再发")?;
+    p.run(FRAMES - p.frame_no, &none, |_, _| {}).context(pick("不开窗口跑的时候出错了：先修好再发", "The game failed during the headless run. Fix it before you publish."))?;
     let _ = std::fs::remove_dir_all(&dir);
     Ok(shots)
 }
@@ -197,14 +200,14 @@ fn agree(s: &mut Saved) -> Result<()> {
     if s.agreed {
         return Ok(());
     }
-    println!("发到集市以前要同意一条：包里的代码、画面、声音、名字，你都有权发布，不侵犯别人的权利。");
-    println!("违反的 app 会被下架，已经装了的也可能被停用。");
-    print!("同意吗？输 yes 回车：");
+    println!("{}", pick("发到集市以前要同意一条：包里的代码、画面、声音、名字，你都有权发布，不侵犯别人的权利。", "Before you publish to the market, you must agree to one term: you have the right to publish all the code, images, sounds, and names in the package. They do not infringe the rights of other people."));
+    println!("{}", pick("违反的 app 会被下架，已经装了的也可能被停用。", "The market removes apps that break this term. It can also stop copies that are already installed."));
+    print!("{}", pick("同意吗？输 yes 回车：", "Do you agree? Type yes and press Enter: "));
     std::io::stdout().flush()?;
     let mut line = String::new();
     std::io::stdin().read_line(&mut line)?;
     if line.trim() != "yes" {
-        bail!("没同意，不发。要人自己在终端里答这一条");
+        bail!("{}", pick("没同意，不发。要人自己在终端里答这一条", "You did not agree. The app is not published. A person must answer this in the terminal."));
     }
     s.agreed = true;
     save(s)
@@ -212,24 +215,25 @@ fn agree(s: &mut Saved) -> Result<()> {
 
 /// 列出要公开的源码，第一次公开这个游戏时问作者。只在有人的终端上能答。
 fn agree_source(s: &mut Saved, name: &str, src: &source::Source) -> Result<()> {
-    println!("要公开的源码（开源协议 {}，压缩后 {} KB）：", src.license, src.bytes.len().div_ceil(1024));
+    let kb = src.bytes.len().div_ceil(1024);
+    println!("{}", pick(format!("要公开的源码（开源协议 {}，压缩后 {kb} KB）：", src.license), format!("Source code to make public (license {}, {kb} KB compressed):", src.license)));
     for (f, size) in &src.files {
         println!("  {f}  {} KB", size.div_ceil(1024));
     }
     for c in &src.changed {
-        println!("  Cargo.toml 改了：{c}（别人才编得了，你的文件不动）");
+        println!("{}", pick(format!("  Cargo.toml 改了：{c}（别人才编得了，你的文件不动）"), format!("  Cargo.toml changed: {c}. This lets other people build it. Your file does not change.")));
     }
     if s.public.iter().any(|n| n == name) {
         return Ok(());
     }
-    println!("公开以后，谁都能看、能下载，能照 {} 开源协议改了再发布。下架或者被停用以后，集市不再给这份源码。", src.license);
-    println!("换开源协议：在 app.toml 的 [app] 里写 license = \"...\"（SPDX 的写法）。");
-    print!("公开 {name} 的源码吗？输 yes 回车：");
+    println!("{}", pick(format!("公开以后，谁都能看、能下载，能照 {} 开源协议改了再发布。下架或者被停用以后，集市不再给这份源码。", src.license), format!("After you make it public, all people can read and download it. They can change it and publish it again under the {} license. If the app is removed or stopped, the market stops giving out this source code.", src.license)));
+    println!("{}", pick("换开源协议：在 app.toml 的 [app] 里写 license = \"...\"（SPDX 的写法）。", "To use a different license, write license = \"...\" in the [app] section of app.toml (an SPDX identifier)."));
+    print!("{}", pick(format!("公开 {name} 的源码吗？输 yes 回车："), format!("Make the source code of {name} public? Type yes and press Enter: ")));
     std::io::stdout().flush()?;
     let mut line = String::new();
     std::io::stdin().read_line(&mut line)?;
     if line.trim() != "yes" {
-        bail!("没答应公开，不发。不想公开源码就去掉 --source。要人自己在终端里答这一条");
+        bail!("{}", pick("没答应公开，不发。不想公开源码就去掉 --source。要人自己在终端里答这一条", "You did not agree to make the source public. The app is not published. If you do not want to make the source public, remove --source. A person must answer this in the terminal."));
     }
     s.public.push(name.to_string());
     save(s)
@@ -256,7 +260,7 @@ pub fn publish(dir: &Path, market: &str, with_source: bool) -> Result<()> {
     let token = token(market)?;
     let g = Game::open(dir)?;
     check_manifest(&g)?;
-    println!("编、不开窗口跑 {FRAMES} 帧、截图……");
+    println!("{}", pick(format!("编、不开窗口跑 {FRAMES} 帧、截图……"), format!("Building, running {FRAMES} frames headless, taking screenshots...")));
     let wasm = g.build()?;
     let shots = trial(&g, &wasm)?;
     let (pkg, _) = pack::pack(dir, None)?;
@@ -274,43 +278,46 @@ pub fn publish(dir: &Path, market: &str, with_source: bool) -> Result<()> {
         parts.push(("shot", Some(["1.png", "2.png", "3.png"][i]), shot));
     }
     let (ctype, body) = multipart(&parts);
-    println!("传 {} KB……", pkg.len() / 1024);
-    let r = reply(agent().post(format!("{market}/v1/publish")).header("authorization", format!("Bearer {token}")).header("content-type", ctype).send(&body[..]), market)?;
+    println!("{}", pick(format!("传 {} KB……", pkg.len() / 1024), format!("Uploading {} KB...", pkg.len() / 1024)));
+    let r = reply(agent().post(format!("{market}/v1/publish")).header("accept-language", crate::lang()).header("authorization", format!("Bearer {token}")).header("content-type", ctype).send(&body[..]), market)?;
     let sha = r["sha256"].as_str().unwrap_or("");
-    println!("上架了：{} {}（sha256 {}）。掌机下次打开集市就看得到。", r["name"].as_str().unwrap_or(""), r["version"].as_str().unwrap_or(""), sha.get(..8).unwrap_or(sha));
+    let (n, v, short) = (r["name"].as_str().unwrap_or(""), r["version"].as_str().unwrap_or(""), sha.get(..8).unwrap_or(sha));
+    println!("{}", pick(format!("上架了：{n} {v}（sha256 {short}）。掌机下次打开集市就看得到。"), format!("Published: {n} {v} (sha256 {short}). Handhelds show it the next time they open the market.")));
     if src.is_some() {
-        println!("源码也公开了：{market}/src/{}/{}.tar.gz", r["name"].as_str().unwrap_or(""), r["version"].as_str().unwrap_or(""));
+        println!("{}", pick(format!("源码也公开了：{market}/src/{n}/{v}.tar.gz"), format!("The source code is also public: {market}/src/{n}/{v}.tar.gz")));
     }
     Ok(())
 }
 
 pub fn status(name: Option<&str>, market: &str) -> Result<()> {
     let token = token(market)?;
-    let mut req = agent().get(format!("{market}/v1/status")).header("authorization", format!("Bearer {token}"));
+    let mut req = agent().get(format!("{market}/v1/status")).header("accept-language", crate::lang()).header("authorization", format!("Bearer {token}"));
     if let Some(n) = name {
         req = req.query("name", n);
     }
     let r = reply(req.call(), market)?;
-    println!("{} 在 {market} 上的 app：", r["login"].as_str().unwrap_or("?"));
+    let who = r["login"].as_str().unwrap_or("?");
+    println!("{}", pick(format!("{who} 在 {market} 上的 app："), format!("Apps of {who} on {market}:")));
     let apps = r["apps"].as_array().cloned().unwrap_or_default();
     if apps.is_empty() {
-        println!("  还没有。vibeplay publish 发一个。");
+        println!("{}", pick("  还没有。vibeplay publish 发一个。", "  None yet. Run vibeplay publish to publish one."));
     }
     for a in &apps {
         let state = match a["state"].as_str() {
-            Some("stopped") => format!("被集市停用了：{}", a["stop_reason"].as_str().unwrap_or("")),
-            Some("removed") => "被集市下架了".into(),
-            _ => "在集市上".into(),
+            Some("stopped") => pick(format!("被集市停用了：{}", a["stop_reason"].as_str().unwrap_or("")), format!("stopped by the market: {}", a["stop_reason"].as_str().unwrap_or(""))),
+            Some("removed") => pick("被集市下架了", "removed by the market").into(),
+            _ => pick("在集市上", "on the market").into(),
         };
-        println!("  {}  {state}  掌机上装了 {} 次，网页里玩了 {} 次", a["name"].as_str().unwrap_or("?"), a["installs"], a["plays"]);
+        let (n, installs, plays) = (a["name"].as_str().unwrap_or("?"), &a["installs"], &a["plays"]);
+        println!("{}", pick(format!("  {n}  {state}  掌机上装了 {installs} 次，网页里玩了 {plays} 次"), format!("  {n}  {state}  installed {installs} times on handhelds, played {plays} times on the web")));
         for v in a["versions"].as_array().into_iter().flatten() {
-            let listed = if v["listed"].as_bool() == Some(true) { "上架" } else { "下架了" };
+            let listed = if v["listed"].as_bool() == Some(true) { pick("上架", "listed") } else { pick("下架了", "removed") };
             println!("    {}  {listed}  {}", v["version"].as_str().unwrap_or("?"), v["created"].as_str().unwrap_or("").get(..10).unwrap_or(""));
         }
     }
     let rejected = r["rejected"].as_array().cloned().unwrap_or_default();
     if !rejected.is_empty() {
-        println!("最近没过的：");
+        println!("{}", pick("最近没过的：", "Recent rejections:"));
         for x in &rejected {
             println!("  {}  {}  {}", x["at"].as_str().unwrap_or("").get(..16).unwrap_or(""), x["name"].as_str().unwrap_or("-"), x["error"].as_str().unwrap_or(""));
         }
@@ -324,10 +331,10 @@ pub fn unpublish(name: &str, version: Option<&str>, market: &str) -> Result<()> 
         Some(v) => json!({ "name": name, "version": v }),
         None => json!({ "name": name }),
     };
-    reply(agent().post(format!("{market}/v1/unpublish")).header("authorization", format!("Bearer {token}")).send_json(body), market)?;
+    reply(agent().post(format!("{market}/v1/unpublish")).header("accept-language", crate::lang()).header("authorization", format!("Bearer {token}")).send_json(body), market)?;
     match version {
-        Some(v) => println!("{name} {v} 下架了。已经装了的掌机照常用。"),
-        None => println!("{name} 下架了。已经装了的掌机照常用，只是没有更新。"),
+        Some(v) => println!("{}", pick(format!("{name} {v} 下架了。已经装了的掌机照常用。"), format!("{name} {v} is removed. Handhelds that have it installed can still use it."))),
+        None => println!("{}", pick(format!("{name} 下架了。已经装了的掌机照常用，只是没有更新。"), format!("{name} is removed. Handhelds that have it installed can still use it, but they get no updates."))),
     }
     Ok(())
 }

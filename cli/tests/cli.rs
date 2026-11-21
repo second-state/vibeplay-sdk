@@ -17,12 +17,18 @@ fn tmp(name: &str) -> PathBuf {
 /// 一次只跑一个：它们都调 cargo 编 wasm。
 static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+/// 测试照中文的字查：命令行说哪种话定成中文，不看跑测试这台机器的 LANG。
 fn vibeplay(args: &[&str], cwd: &Path) -> Result<String, String> {
+    vibeplay_in("zh", args, cwd)
+}
+
+fn vibeplay_in(lang: &str, args: &[&str], cwd: &Path) -> Result<String, String> {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
     let out = Command::new(env!("CARGO_BIN_EXE_vibeplay"))
         .args(args)
         .current_dir(cwd)
         .env("CARGO_TARGET_DIR", Path::new(env!("CARGO_TARGET_TMPDIR")).join("vibeplay-wasm"))
+        .env("VIBEPLAY_LANG", lang)
         .output()
         .unwrap();
     if out.status.success() {
@@ -115,13 +121,25 @@ fn typos_are_errors_not_ignored() {
     assert!(vibeplay(&["fly"], &d).unwrap_err().contains("不认识的命令"));
 }
 
+/// 系统不是中文时命令行说英文（11-21 同事的英文系统上全是中文）。
+#[test]
+fn english_when_the_system_is_not_chinese() {
+    let d = tmp("english");
+    assert!(vibeplay_in("en", &["fly"], &d).unwrap_err().contains("Unknown command fly"));
+    assert!(vibeplay_in("en_US.UTF-8", &["new", "Star"], &d).unwrap_err().contains("lowercase"));
+    let help = vibeplay_in("en", &["help"], &d).unwrap();
+    assert!(help.starts_with("vibeplay: make games"), "{help}");
+    assert!(!help.chars().any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c)), "英文的帮助里没有汉字：{help}");
+    assert!(vibeplay_in("zh_CN.UTF-8", &["help"], &d).unwrap().starts_with("vibeplay：做掌机游戏"));
+}
+
 /// 发到集市前在这台电脑上先查：没登录不发；清单缺 description 不连网就报。
 #[test]
 fn publish_checks_before_it_uploads() {
     let d = tmp("publish");
     let run = |args: &[&str], config: &Path| {
         let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
-        Command::new(env!("CARGO_BIN_EXE_vibeplay")).args(args).current_dir(&d).env("XDG_CONFIG_HOME", config).env_remove("VIBEPLAY_MARKET").output().unwrap()
+        Command::new(env!("CARGO_BIN_EXE_vibeplay")).args(args).current_dir(&d).env("XDG_CONFIG_HOME", config).env("VIBEPLAY_LANG", "zh").env_remove("VIBEPLAY_MARKET").output().unwrap()
     };
     let none = d.join("no-config");
     let out = run(&["publish", blank().to_str().unwrap()], &none);

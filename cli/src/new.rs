@@ -1,6 +1,7 @@
 //! `vibeplay new`：从模板起一个游戏。`vibeplay skill`：给 agent 的说明。
 //! 模板是 templates/blank，编进命令行里：命令行装到哪都能起。
 
+use crate::pick;
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 
@@ -15,17 +16,17 @@ const REPO: &str = "https://github.com/second-state/vibeplay-sdk";
 /// 起一个游戏。`sdk` 是本地的 vibeplay-sdk 目录：改 SDK 的人用，平常从 GitHub 拿。
 pub fn create(dir: &Path, title: Option<&str>, sdk: Option<&Path>) -> Result<()> {
     if dir.exists() && std::fs::read_dir(dir)?.next().is_some() {
-        bail!("{} 已经有东西了：换一个新目录", dir.display());
+        bail!(pick(format!("{} 已经有东西了：换一个新目录", dir.display()), format!("{} is not empty. Use a new directory.", dir.display())));
     }
     let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
     if name.is_empty() || !name.starts_with(|c: char| c.is_ascii_lowercase()) || !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
-        bail!("目录名「{name}」就是游戏的名字：要英文小写开头，只用小写字母、数字、-（比如 star-catch）");
+        bail!(pick(format!("目录名「{name}」就是游戏的名字：要英文小写开头，只用小写字母、数字、-（比如 star-catch）"), format!("The directory name \"{name}\" is the game name. Start it with a lowercase letter. Use only lowercase letters, digits and - (for example star-catch).")));
     }
     let dep = match sdk {
         Some(p) => {
-            let p = std::fs::canonicalize(p).with_context(|| format!("没有 {}", p.display()))?;
+            let p = std::fs::canonicalize(p).with_context(|| pick(format!("没有 {}", p.display()), format!("{} does not exist", p.display())))?;
             if !p.join("vibeplay/Cargo.toml").is_file() {
-                bail!("{} 不是 vibeplay-sdk 的目录", p.display());
+                bail!(pick(format!("{} 不是 vibeplay-sdk 的目录", p.display()), format!("{} is not a vibeplay-sdk directory", p.display())));
             }
             format!("vibeplay = {{ path = \"{}\" }}", p.join("vibeplay").display())
         }
@@ -87,11 +88,11 @@ panic = "abort"
     for (rel, bytes) in files {
         let p = dir.join(rel);
         std::fs::create_dir_all(p.parent().unwrap())?;
-        std::fs::write(&p, bytes).with_context(|| format!("写不了 {}", p.display()))?;
+        std::fs::write(&p, bytes).with_context(|| pick(format!("写不了 {}", p.display()), format!("Cannot write {}", p.display())))?;
     }
-    println!("起好了：{}", dir.display());
-    println!("  cd {} && vibeplay run        开窗口玩", dir.display());
-    println!("  规则在 src/lib.rs 的 step，画面在 draw。给 agent 看的说明：vibeplay skill");
+    println!("{}", pick(format!("起好了：{}", dir.display()), format!("Created: {}", dir.display())));
+    println!("{}", pick(format!("  cd {} && vibeplay run        开窗口玩", dir.display()), format!("  cd {} && vibeplay run        play in a window", dir.display())));
+    println!("{}", pick("  规则在 src/lib.rs 的 step，画面在 draw。给 agent 看的说明：vibeplay skill", "  The rules are in step in src/lib.rs. The drawing is in draw. Instructions for an agent: vibeplay skill"));
     Ok(())
 }
 
@@ -100,7 +101,7 @@ pub fn install_skill(to: Option<&Path>) -> Result<()> {
     let dirs: Vec<PathBuf> = match to {
         Some(d) => vec![d.to_path_buf()],
         None => {
-            let home = PathBuf::from(std::env::var_os("HOME").context("没有 HOME")?);
+            let home = PathBuf::from(std::env::var_os("HOME").context(pick("没有 HOME", "HOME is not set"))?);
             let mut v: Vec<PathBuf> = [".claude", ".codex"].iter().map(|a| home.join(a)).filter(|p| p.is_dir()).map(|p| p.join("skills")).collect();
             if v.is_empty() {
                 v.push(home.join(".claude/skills"));
@@ -111,9 +112,10 @@ pub fn install_skill(to: Option<&Path>) -> Result<()> {
     for d in dirs {
         let p = d.join("vibeplay/SKILL.md");
         std::fs::create_dir_all(p.parent().unwrap())?;
-        std::fs::write(&p, SKILL).with_context(|| format!("写不了 {}", p.display()))?;
+        std::fs::write(&p, SKILL).with_context(|| pick(format!("写不了 {}", p.display()), format!("Cannot write {}", p.display())))?;
         println!("{}", p.display());
     }
-    println!("别的 agent：让它先跑 vibeplay skill 读说明。");
+    println!("{}", pick("Claude Code、Codex 开着的话，重开一下才读得到。", "If Claude Code or Codex is open, start it again to load the Skill."));
+    println!("{}", pick("别的 agent：让它先跑 vibeplay skill 读说明。", "Other agents: tell the agent to run vibeplay skill first to read the instructions."));
     Ok(())
 }

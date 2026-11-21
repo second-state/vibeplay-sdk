@@ -5,6 +5,7 @@
 //! 30 a           # 第 30 帧按 A
 //! ```
 
+use crate::pick;
 use anyhow::{bail, Context, Result};
 use qfull::full::key;
 
@@ -27,14 +28,14 @@ impl Script {
                 Some((a, b)) => (a, b),
                 None => (at, at),
             };
-            let what = || format!("脚本第 {} 行：{line}", n + 1);
+            let what = || pick(format!("脚本第 {} 行：{line}", n + 1), format!("Script line {}: {line}", n + 1));
             let (a, b): (u64, u64) = (a.parse().with_context(what)?, b.parse().with_context(what)?);
             if b < a {
-                bail!("{}：止在起之前", what());
+                bail!(pick(format!("{}：止在起之前", what()), format!("{}: the end frame is before the start frame", what())));
             }
             let mut bits = 0;
             for w in words {
-                bits |= key::of(w).with_context(|| format!("{}：不认识的键 {w}", what()))?;
+                bits |= key::of(w).with_context(|| pick(format!("{}：不认识的键 {w}", what()), format!("{}: unknown key {w}", what())))?;
             }
             spans.push((a, b, bits));
         }

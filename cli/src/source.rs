@@ -76,18 +76,18 @@ pub fn secret(text: &str) -> Option<&'static str> {
     let upper = |b: u8| b.is_ascii_uppercase() || b.is_ascii_digit();
     let starts = |at: usize| at == 0 || !word(text.as_bytes()[at - 1]);
     if text.contains("PRIVATE KEY-----") {
-        return Some("私钥");
+        return Some(crate::pick("私钥", "a private key"));
     }
     let rules: [Rule; 9] = [
-        ("sk-", word, 20, "以 sk- 开头的 key"),
-        ("ghp_", alnum, 30, "GitHub 令牌"),
-        ("gho_", alnum, 30, "GitHub 令牌"),
-        ("ghu_", alnum, 30, "GitHub 令牌"),
-        ("ghs_", alnum, 30, "GitHub 令牌"),
-        ("ghr_", alnum, 30, "GitHub 令牌"),
-        ("AKIA", upper, 16, "AWS key"),
-        ("AIza", word, 35, "Google key"),
-        ("xoxb-", word, 10, "Slack 令牌"),
+        ("sk-", word, 20, crate::pick("以 sk- 开头的 key", "a key that starts with sk-")),
+        ("ghp_", alnum, 30, crate::pick("GitHub 令牌", "a GitHub token")),
+        ("gho_", alnum, 30, crate::pick("GitHub 令牌", "a GitHub token")),
+        ("ghu_", alnum, 30, crate::pick("GitHub 令牌", "a GitHub token")),
+        ("ghs_", alnum, 30, crate::pick("GitHub 令牌", "a GitHub token")),
+        ("ghr_", alnum, 30, crate::pick("GitHub 令牌", "a GitHub token")),
+        ("AKIA", upper, 16, crate::pick("AWS key", "an AWS key")),
+        ("AIza", word, 35, crate::pick("Google key", "a Google key")),
+        ("xoxb-", word, 10, crate::pick("Slack 令牌", "a Slack token")),
     ];
     for (head, ok, min, what) in rules {
         for (at, _) in text.match_indices(head) {
@@ -101,7 +101,7 @@ pub fn secret(text: &str) -> Option<&'static str> {
 
 /// 开源协议：`app.toml` 的 `[app] license`，没写是 MIT。
 fn license(dir: &Path) -> Result<String> {
-    let t: toml::Value = toml::from_str(&std::fs::read_to_string(dir.join("app.toml"))?).context("app.toml 读不了")?;
+    let t: toml::Value = toml::from_str(&std::fs::read_to_string(dir.join("app.toml"))?).context(crate::pick("app.toml 读不了", "Cannot read app.toml."))?;
     Ok(t.get("app").and_then(|a| a.get("license")).and_then(|l| l.as_str()).filter(|l| !l.trim().is_empty()).unwrap_or(DEFAULT_LICENSE).to_string())
 }
 
@@ -122,16 +122,16 @@ fn workspace(dir: &Path) -> Option<toml::Table> {
 
 /// 发出去的 `Cargo.toml`：别人拿到也编得了。回新的字节，和改了什么（没改是空的）。
 fn portable_cargo(dir: &Path) -> Result<(Vec<u8>, Vec<String>)> {
-    let raw = std::fs::read_to_string(dir.join("Cargo.toml")).context("读不了 Cargo.toml")?;
-    let mut t: toml::Table = raw.parse().context("Cargo.toml 读不了")?;
+    let raw = std::fs::read_to_string(dir.join("Cargo.toml")).context(crate::pick("读不了 Cargo.toml", "Cannot read Cargo.toml."))?;
+    let mut t: toml::Table = raw.parse().context(crate::pick("Cargo.toml 读不了", "Cannot parse Cargo.toml."))?;
     let mut changed = Vec::new();
     if let Some(pkg) = t.get_mut("package").and_then(|p| p.as_table_mut()) {
         let ws = workspace(dir);
         let shared = ws.as_ref().and_then(|w| w.get("workspace")?.get("package")?.as_table().cloned()).unwrap_or_default();
         for (k, v) in pkg.iter_mut() {
             if v.get("workspace").and_then(|w| w.as_bool()) == Some(true) {
-                *v = shared.get(k).cloned().with_context(|| format!("Cargo.toml 的 {k} 从 workspace 继承，workspace 里没写"))?;
-                changed.push(format!("{k} 写成 workspace 里的值"));
+                *v = shared.get(k).cloned().with_context(|| crate::pick(format!("Cargo.toml 的 {k} 从 workspace 继承，workspace 里没写"), format!("Cargo.toml gets {k} from the workspace, but the workspace does not set it.")))?;
+                changed.push(crate::pick(format!("{k} 写成 workspace 里的值"), format!("{k} set to the workspace value")));
             }
         }
     }
@@ -143,13 +143,13 @@ fn portable_cargo(dir: &Path) -> Result<(Vec<u8>, Vec<String>)> {
                 continue;
             }
             if name != "vibeplay" {
-                bail!("Cargo.toml 的 {name} 是本机的依赖，别人编不了。换成 crates.io 或 git 的依赖再发");
+                bail!("{}", crate::pick(format!("Cargo.toml 的 {name} 是本机的依赖，别人编不了。换成 crates.io 或 git 的依赖再发"), format!("In Cargo.toml, {name} is a local dependency. Other people cannot build it. Change it to a crates.io or git dependency, then publish.")));
             }
             let mut git = toml::Table::new();
             git.insert("git".into(), REPO.into());
             git.insert("tag".into(), format!("v{}", env!("CARGO_PKG_VERSION")).into());
             *v = git.into();
-            changed.push(format!("vibeplay 换成 git 依赖（v{}）", env!("CARGO_PKG_VERSION")));
+            changed.push(crate::pick(format!("vibeplay 换成 git 依赖（v{}）", env!("CARGO_PKG_VERSION")), format!("vibeplay changed to a git dependency (v{})", env!("CARGO_PKG_VERSION"))));
         }
     }
     if changed.is_empty() {
@@ -163,19 +163,19 @@ pub fn pack(dir: &Path) -> Result<Source> {
     let names = pick(dir)?;
     for need in ["Cargo.toml", "app.toml"] {
         if !names.iter().any(|n| n == need) {
-            bail!("源码里要有 {need}");
+            bail!("{}", crate::pick(format!("源码里要有 {need}"), format!("The source code must contain {need}.")));
         }
     }
     if !names.iter().any(|n| n.starts_with("src/")) {
-        bail!("源码里要有 src/");
+        bail!("{}", crate::pick("源码里要有 src/", "The source code must contain src/."));
     }
     let mut tar = tar::Builder::new(flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best()));
     let mut files = Vec::new();
     let (cargo, changed) = portable_cargo(dir)?;
     for n in &names {
-        let bytes = if n == "Cargo.toml" { cargo.clone() } else { std::fs::read(dir.join(n)).with_context(|| format!("读不了 {n}"))? };
+        let bytes = if n == "Cargo.toml" { cargo.clone() } else { std::fs::read(dir.join(n)).with_context(|| crate::pick(format!("读不了 {n}"), format!("Cannot read {n}.")))? };
         if let Some(what) = secret(&String::from_utf8_lossy(&bytes)) {
-            bail!("{n} 里像有{what}。拿掉再发（服务端也会查）");
+            bail!("{}", crate::pick(format!("{n} 里像有{what}。拿掉再发（服务端也会查）"), format!("{n} seems to contain {what}. Remove it, then publish. The server also checks.")));
         }
         let mut h = tar::Header::new_gnu();
         h.set_size(bytes.len() as u64);
@@ -189,8 +189,8 @@ pub fn pack(dir: &Path) -> Result<Source> {
     if bytes.len() > MAX {
         let mut big = files.clone();
         big.sort_by_key(|f| std::cmp::Reverse(f.1));
-        let top: Vec<String> = big.iter().take(3).map(|(n, s)| format!("{n}（{} KB）", s / 1024)).collect();
-        bail!("源码压缩后 {} KB，超过 {} MB。最大的是：{}", bytes.len() / 1024, MAX >> 20, top.join("、"));
+        let top: Vec<String> = big.iter().take(3).map(|(n, s)| crate::pick(format!("{n}（{} KB）", s / 1024), format!("{n} ({} KB)", s / 1024))).collect();
+        bail!("{}", crate::pick(format!("源码压缩后 {} KB，超过 {} MB。最大的是：{}", bytes.len() / 1024, MAX >> 20, top.join("、")), format!("The compressed source code is {} KB. The limit is {} MB. The largest files are: {}", bytes.len() / 1024, MAX >> 20, top.join(", "))));
     }
     Ok(Source { bytes, files, license: license(dir)?, changed })
 }
@@ -290,9 +290,9 @@ mod tests {
 
     #[test]
     fn what_looks_like_a_key() {
-        assert_eq!(secret("-----BEGIN PRIVATE KEY-----"), Some("私钥"));
-        assert_eq!(secret("token = ghp_0123456789abcdefghijklmnopqrstuvwxyz"), Some("GitHub 令牌"));
-        assert_eq!(secret("AKIAABCDEFGHIJKLMNOP"), Some("AWS key"));
+        assert_eq!(secret("-----BEGIN PRIVATE KEY-----"), Some(crate::pick("私钥", "a private key")));
+        assert_eq!(secret("token = ghp_0123456789abcdefghijklmnopqrstuvwxyz"), Some(crate::pick("GitHub 令牌", "a GitHub token")));
+        assert_eq!(secret("AKIAABCDEFGHIJKLMNOP"), Some(crate::pick("AWS key", "an AWS key")));
         assert_eq!(secret("let task-done = 1; // ask-me"), None, "单词里的 sk- 不算");
         assert_eq!(secret("sk-short"), None);
         assert_eq!(secret("fn main() {}"), None);
