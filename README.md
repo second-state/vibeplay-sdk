@@ -8,6 +8,7 @@ You write games in Rust and build them to wasm. Write them yourself, or let an a
 You need Rust. If you do not have it, install it from [rustup.rs](https://rustup.rs) first.
 Run these commands in your own terminal, before you open the agent. Do not ask the agent to run `vibeplay skill install`: it writes to `~/.claude/skills`, and Claude Code does not let an agent change its own configuration, so it stops the command.
 The command line uses the system language: Chinese on a Chinese system, English on all others. Set `VIBEPLAY_LANG=zh` or `VIBEPLAY_LANG=en` to choose.
+After a command, it tells you when a new version is out (it checks at most once a day). Run `vibeplay update` to update, then run `vibeplay skill install` again. Set `VIBEPLAY_NO_UPDATE_CHECK=1` to turn off the check.
 
 ```sh
 cargo install --git https://github.com/second-state/vibeplay-sdk vibeplay-cli

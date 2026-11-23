@@ -26,6 +26,7 @@ fn vibeplay(app: &str, args: &[&str], script: &str) -> String {
         .arg("--input")
         .arg(&input)
         .env("CARGO_TARGET_DIR", Path::new(env!("CARGO_TARGET_TMPDIR")).join("vibeplay-wasm"))
+        .env("VIBEPLAY_NO_UPDATE_CHECK", "1")
         .env("VIBEPLAY_LANG", "zh")
         .output()
         .unwrap();
