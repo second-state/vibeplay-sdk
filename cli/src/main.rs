@@ -9,6 +9,7 @@ mod player;
 mod remix;
 mod script;
 mod source;
+mod update;
 mod web;
 mod window;
 
@@ -41,6 +42,7 @@ const USAGE_ZH: &str = "vibeplay：做掌机游戏（240×160、256 色、每秒
   vibeplay unpublish <名字> [--version x.y.z]
                                         从集市下架。已经装了的掌机照常用
   vibeplay skill [install [--to 目录]]   印出给 agent 的说明；install 装进 Claude Code 和 Codex
+  vibeplay update                       升级命令行：main 上有新版就重装（cargo install）
 
 集市的命令都能加 --market <地址>（本机试的时候指 wrangler dev），也能设环境变量 VIBEPLAY_MARKET。
 --lang 是游戏看到的系统语言：en（默认）或 zh。掌机默认英文，人在设置里换。
@@ -52,7 +54,8 @@ const USAGE_ZH: &str = "vibeplay：做掌机游戏（240×160、256 色、每秒
 按键脚本一行一条：「帧 键…」或「起-止 键…」，帧从 0 数，# 后面是注释。
 键：up down left right a b x y l1 r1 start select。
 窗口的键：方向键，X=A，Z=B，S=X，A=Y，Q=L1，W=R1，回车=Start，右 Shift=Select，Esc 退出。
-命令行的字跟着系统语言：系统是中文（LANG=zh_CN…）说中文，别的说英文。设 VIBEPLAY_LANG=zh 或 en 可以指定。";
+命令行的字跟着系统语言：系统是中文（LANG=zh_CN…）说中文，别的说英文。设 VIBEPLAY_LANG=zh 或 en 可以指定。
+命令跑完，有新版会提示一句（一天最多查一次，只取 GitHub 上的 Cargo.toml）。设 VIBEPLAY_NO_UPDATE_CHECK=1 不查。";
 
 const USAGE_EN: &str = "vibeplay: make games for the handheld (240×160, 256 colors, 60 frames a second)
 
@@ -78,6 +81,7 @@ const USAGE_EN: &str = "vibeplay: make games for the handheld (240×160, 256 col
   vibeplay unpublish <name> [--version x.y.z]
                                         Remove from the Market. Handhelds that have it can still use it
   vibeplay skill [install [--to dir]]   Print the instructions for agents. install puts them into Claude Code and Codex
+  vibeplay update                       Update the command line: reinstall it (cargo install) when main has a new version
 
 All Market commands accept --market <address> (for a local test, give the wrangler dev address). You can also set the VIBEPLAY_MARKET environment variable.
 --lang is the system language that the game sees: en (default) or zh. The handheld is English by default; people change it in Settings.
@@ -89,7 +93,8 @@ A manifest with frame = \"640x480\" is a true-color app (640×480, RGB565): run 
 Key script: one line for each entry, \"frame keys…\" or \"start-end keys…\". Frames start at 0. Text after # is a comment.
 Keys: up down left right a b x y l1 r1 start select.
 Window keys: arrow keys, X=A, Z=B, S=X, A=Y, Q=L1, W=R1, Enter=Start, right Shift=Select, Esc quits.
-The command line speaks Chinese when the system language is Chinese (LANG=zh_CN…), and English for other languages. VIBEPLAY_LANG=zh or VIBEPLAY_LANG=en sets it.";
+The command line speaks Chinese when the system language is Chinese (LANG=zh_CN…), and English for other languages. VIBEPLAY_LANG=zh or VIBEPLAY_LANG=en sets it.
+After a command, it tells you when a new version is out. It checks at most once a day and only reads Cargo.toml on GitHub. VIBEPLAY_NO_UPDATE_CHECK=1 turns this off.";
 
 /// 命令行说哪种话：先看 VIBEPLAY_LANG，再看 LC_ALL、LC_MESSAGES、LANG（取第一个不空的）。`zh` 开头说中文，别的说英文。
 pub fn zh() -> bool {
@@ -170,8 +175,15 @@ fn main() {
         println!("vibeplay {}", env!("CARGO_PKG_VERSION"));
         return;
     }
-    if let Err(e) = run(args) {
+    let update = args[0] == "update";
+    let r = run(args);
+    if let Err(e) = &r {
         eprintln!("{}{e:#}", pick("vibeplay：", "vibeplay: "));
+    }
+    if !update {
+        update::hint();
+    }
+    if r.is_err() {
         std::process::exit(1);
     }
 }
@@ -275,6 +287,10 @@ fn run(mut args: Vec<String>) -> Result<()> {
                 Some("install") => new::install_skill(a.path("to").as_deref()),
                 Some(x) => bail!(pick(format!("skill 后面只认 install，不认 {x}"), format!("After skill, only install is accepted, not {x}"))),
             }
+        }
+        "update" => {
+            a.only(&[])?;
+            update::run()
         }
         c => bail!(pick(format!("不认识的命令 {c}。vibeplay help 看全部命令"), format!("Unknown command {c}. Run vibeplay help to see all commands"))),
     }

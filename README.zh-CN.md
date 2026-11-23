@@ -8,6 +8,7 @@
 要先有 Rust。没有就先到 [rustup.rs](https://rustup.rs) 装。
 下面这几条在你自己的终端里跑，在打开 agent 之前。别让 agent 跑 `vibeplay skill install`：它要往 `~/.claude/skills` 里写，Claude Code 不让 agent 改它自己的配置，会拦下。
 命令行的字跟着系统语言：系统是中文说中文，别的说英文。设 `VIBEPLAY_LANG=zh` 或 `en` 可以指定。
+命令跑完，有新版会提示一句（一天最多查一次）。跑 `vibeplay update` 升级，再跑一次 `vibeplay skill install`。设 `VIBEPLAY_NO_UPDATE_CHECK=1` 不查。
 
 ```sh
 cargo install --git https://github.com/second-state/vibeplay-sdk vibeplay-cli

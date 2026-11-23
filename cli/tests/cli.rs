@@ -28,6 +28,7 @@ fn vibeplay_in(lang: &str, args: &[&str], cwd: &Path) -> Result<String, String> 
         .args(args)
         .current_dir(cwd)
         .env("CARGO_TARGET_DIR", Path::new(env!("CARGO_TARGET_TMPDIR")).join("vibeplay-wasm"))
+        .env("VIBEPLAY_NO_UPDATE_CHECK", "1")
         .env("VIBEPLAY_LANG", lang)
         .output()
         .unwrap();
@@ -139,7 +140,7 @@ fn publish_checks_before_it_uploads() {
     let d = tmp("publish");
     let run = |args: &[&str], config: &Path| {
         let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
-        Command::new(env!("CARGO_BIN_EXE_vibeplay")).args(args).current_dir(&d).env("XDG_CONFIG_HOME", config).env("VIBEPLAY_LANG", "zh").env_remove("VIBEPLAY_MARKET").output().unwrap()
+        Command::new(env!("CARGO_BIN_EXE_vibeplay")).args(args).current_dir(&d).env("XDG_CONFIG_HOME", config).env("VIBEPLAY_NO_UPDATE_CHECK", "1").env("VIBEPLAY_LANG", "zh").env_remove("VIBEPLAY_MARKET").output().unwrap()
     };
     let none = d.join("no-config");
     let out = run(&["publish", blank().to_str().unwrap()], &none);
@@ -156,4 +157,28 @@ fn publish_checks_before_it_uploads() {
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("要有 description"), "{err}");
     assert!(!err.contains("连不上"), "{err}");
+}
+
+/// 有新版：命令跑完在 stderr 上提示一句（出错时在错误后面）。一天内用存着的结果，不连网。
+#[test]
+fn tells_about_a_new_version() {
+    let d = tmp("update");
+    let cfg = d.join("config");
+    std::fs::create_dir_all(cfg.join("vibeplay")).unwrap();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    let run = |latest: &str, off: bool| {
+        std::fs::write(cfg.join("vibeplay/update.json"), format!(r#"{{"checked":{now},"latest":"{latest}"}}"#)).unwrap();
+        let mut c = Command::new(env!("CARGO_BIN_EXE_vibeplay"));
+        c.arg("frob").current_dir(&d).env("XDG_CONFIG_HOME", &cfg).env("VIBEPLAY_LANG", "en").env_remove("CI").env_remove("VIBEPLAY_NO_UPDATE_CHECK");
+        if off {
+            c.env("VIBEPLAY_NO_UPDATE_CHECK", "1");
+        }
+        String::from_utf8_lossy(&c.output().unwrap().stderr).into_owned()
+    };
+    let err = run("99.0.0", false);
+    assert!(err.contains("Unknown command frob"), "{err}");
+    assert!(err.contains("vibeplay 99.0.0 is out") && err.contains("vibeplay update"), "{err}");
+    assert!(err.find("Unknown").unwrap() < err.find("99.0.0").unwrap(), "错误在前，提示在后：{err}");
+    assert!(!run(env!("CARGO_PKG_VERSION"), false).contains("is out"), "一样的版本不提示");
+    assert!(!run("99.0.0", true).contains("is out"), "VIBEPLAY_NO_UPDATE_CHECK 关掉");
 }
