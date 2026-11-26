@@ -2,8 +2,10 @@
 
 English · [中文](README.zh-CN.md)
 
-Make pixel games and small apps for the VibePlay handheld: 240×160, 256 colors, 60 frames a second, four chip-sound channels.
+Make pixel games and small apps for the [VibePlay](https://vibeplay.korekore.ai/) handheld: 240×160, 256 colors, 60 frames a second, four chip-sound channels.
 You write games in Rust and build them to wasm. Write them yourself, or let an agent write them. Claude Code and Codex work, and so do other agents.
+
+See the website for more about the handheld, the [developer docs](https://vibeplay.korekore.ai/docs) and the [game market](https://vibeplay.korekore.ai/market).
 
 You need Rust. If you do not have it, install it from [rustup.rs](https://rustup.rs) first.
 Run these commands in your own terminal, before you open the agent. Do not ask the agent to run `vibeplay skill install`: it writes to `~/.claude/skills`, and Claude Code does not let an agent change its own configuration, so it stops the command.

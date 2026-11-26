@@ -2,8 +2,10 @@
 
 [English](README.md) · 中文
 
-做 VibePlay 掌机上的像素游戏和小 app：240×160、256 色、每秒 60 帧，四个声道的芯片音。
+做 [VibePlay](https://vibeplay.korekore.ai/) 掌机上的像素游戏和小 app：240×160、256 色、每秒 60 帧，四个声道的芯片音。
 用 Rust 写，编成 wasm。你自己写，或者让 agent 写：Claude Code、Codex 都行，别的 agent 也行。
+
+掌机介绍、[开发文档](https://vibeplay.korekore.ai/docs)和[游戏集市](https://vibeplay.korekore.ai/market)都在网站上（网站有英文和日文）。
 
 要先有 Rust。没有就先到 [rustup.rs](https://rustup.rs) 装。
 下面这几条在你自己的终端里跑，在打开 agent 之前。别让 agent 跑 `vibeplay skill install`：它要往 `~/.claude/skills` 里写，Claude Code 不让 agent 改它自己的配置，会拦下。
